@@ -19,14 +19,13 @@ multi = (type) ->
   (val) -> all = all.concat type val
 
 prog
-  .version('0.0.1')
-  .usage('[options] <json-spec> [input-file]')
+  .version('0.0.2')
   .option('-c, --count', 'Just write a count of matched lines to stdout.')
-  .option('-e, --column [rx]',
+  .option('-e, --column <rx>',
           "Add a column per regexp's first match groups (name/data)",
           multi regexp)
-  .option('-s, --spec <json>', 'Read column spec from a name/json file')
-  .parseExpectedArgs(['<json-spec>', '[input-file]'])
+  .option('-s, --spec <json>', 'Read columns spec from a name/json file')
+  .parseExpectedArgs(['[input-file]'])
   .on('--help', ->
     log '''
     \  Each spec-file keypair names an output column and its regexp to grep for.
@@ -81,12 +80,12 @@ grep = do (spec) ->
 
 input =
   switch prog.args.length
-    when 0, 1
+    when 0
       process.stdin.setEncoding 'utf8'
       process.stdin.resume()
       process.stdin
-    when 2
-      fs.createReadStream prog.args[1]
+    when 1
+      fs.createReadStream prog.args[0]
     else
       prog.help()
 
