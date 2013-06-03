@@ -8,10 +8,24 @@ fs = require('fs')
 log = (x) -> process.stdout.write "#{x}\n"
 debug = (x) -> log JSON.stringify x, null, 2
 
+regexp = (val) ->
+  if literal = /^\/(.*)\/([img]*)$/.exec val
+    new RegExp literal[1], literal[2]
+  else
+    new RegExp val
+
+multi = (type) ->
+  all = []
+  (val) -> all = all.concat type val
+
 prog
   .version('0.0.1')
   .usage('[options] <json-spec> [input-file]')
   .option('-c, --count', 'Just write a count of matched lines to stdout.')
+  .option('-e, --column [rx]',
+          "Add a column per regexp's first match groups (name/data)",
+          multi regexp)
+  .option('-s, --spec <json>', 'Read column spec from a name/json file')
   .parseExpectedArgs(['<json-spec>', '[input-file]'])
   .on('--help', ->
     log '''
@@ -21,7 +35,7 @@ prog
       if any, or the whole line, if not. An example json-spec file:
 
         { "resolveDivisionByIp": "resolveDivisionByIp took ([.0-9]+)ms"
-        , "getClosestDivision": ["getClosestDivision took ([.0-9]+)ms", "i"]
+        , "getClosestDivision": "/getClosestDivision took ([.0-9]+)ms/i"
         }
 
       This would produce a 2-column csv of timing readouts for two methods that
@@ -30,32 +44,35 @@ prog
     ''')
   .parse process.argv
 
-spec = JSON.parse fs.readFileSync prog.args[0]
+spec = {}
+spec = JSON.parse fs.readFileSync prog.spec  if prog.spec
 
 count = 0
 
 hits = {} # columnName: [matchResults], otherName: [...], ...
 find = [] # ordered list of (line) -> hits[columnName].push ... functions
 grep = do (spec) ->
-  matchLine = (regexp, line) ->
-    return undefined  unless match = regexp.exec line
+  matchLine = (name, line) ->
+    line = name  unless named = arguments.length is 2
+    return undefined  unless match = this.exec line
 
     if match.length is 1
       what = line
-    else
+    else if named
       what = match[1]
+    else
+      name = match[1]
+      what = match[2]
 
-    hits[this].push what
+    hits[name] = (hits[name] ? []).concat what
     what
 
-  addMatcher = (column, regexp) ->
+  addMatcher = (column, re) ->
     hits[column] = []
-    if typeof regexp isnt 'object'
-      regexp = new RegExp regexp.toString()
-    else
-      regexp = new RegExp regexp[0], regexp[1]
-    find.push matchLine.bind column, regexp
-  addMatcher name, regexp  for name, regexp of spec
+    find.push matchLine.bind regexp(re), column
+
+  addMatcher name, re  for name, re of spec
+  find.push matchLine.bind re  for re in prog.column ? []
 
   (line) ->
     for found in find
@@ -64,7 +81,7 @@ grep = do (spec) ->
 
 input =
   switch prog.args.length
-    when 1
+    when 0, 1
       process.stdin.setEncoding 'utf8'
       process.stdin.resume()
       process.stdin
