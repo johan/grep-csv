@@ -1,0 +1,25 @@
+{ "name": "grep-csv"
+, "version": "0.0.1"
+, "dependencies":
+  { "commander": "~1.1.1"
+  , "lazy": "~1.0.11"
+  }
+, "engines":
+  [ "node >=0.8.0"
+  ]
+, "description": "Grep arbitrary input to tidy csv output command line utility."
+, "author": "Johan Sundström <oyasumi@gmail.com> (http://ecmanaut.blogspot.com/)"
+, "keywords":
+  [ "grep"
+  , "csv"
+  , "command"
+  , "shell"
+  ]
+, "repository":
+  { "type": "git"
+  , "url": "https://github.com/johan/grep-csv.git"
+  }
+, "bin":
+  { "grep-csv": "./grep-csv"
+  }
+}

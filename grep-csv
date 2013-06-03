@@ -1,0 +1,112 @@
+#! /usr/bin/env coffee
+
+prog = require 'commander'
+Lazy = require 'lazy'
+
+fs = require('fs')
+
+log = (x) -> process.stdout.write "#{x}\n"
+debug = (x) -> log JSON.stringify x, null, 2
+
+prog
+  .version('0.0.1')
+  .usage('[options] <json-spec> [input-file]')
+  .option('-c, --count', 'Just write a count of matched lines to stdout.')
+  .parseExpectedArgs(['<json-spec>', '[input-file]'])
+  .on('--help', ->
+    log '''
+    \  Each spec-file keypair names an output column and its regexp to grep for.
+      Input lines are tested against these in turn, and the first match produces
+      a row in the corresponding column from that regexp\'s first match group,
+      if any, or the whole line, if not. An example json-spec file:
+
+        { "resolveDivisionByIp": "resolveDivisionByIp took ([.0-9]+)ms"
+        , "getClosestDivision": ["getClosestDivision took ([.0-9]+)ms", "i"]
+        }
+
+      This would produce a 2-column csv of timing readouts for two methods that
+      spew log lines like "resolveDivisionByIp took 51.409ms". The second syntax
+      lets you match for any case. Use JSON escaped javascript RegExp notation.
+    ''')
+  .parse process.argv
+
+spec = JSON.parse fs.readFileSync prog.args[0]
+
+count = 0
+
+hits = {} # columnName: [matchResults], otherName: [...], ...
+find = [] # ordered list of (line) -> hits[columnName].push ... functions
+grep = do (spec) ->
+  matchLine = (regexp, line) ->
+    return undefined  unless match = regexp.exec line
+
+    if match.length is 1
+      what = line
+    else
+      what = match[1]
+
+    hits[this].push what
+    what
+
+  addMatcher = (column, regexp) ->
+    hits[column] = []
+    if typeof regexp isnt 'object'
+      regexp = new RegExp regexp.toString()
+    else
+      regexp = new RegExp regexp[0], regexp[1]
+    find.push matchLine.bind column, regexp
+  addMatcher name, regexp  for name, regexp of spec
+
+  (line) ->
+    for found in find
+      return found  if found = found line
+    undefined
+
+input =
+  switch prog.args.length
+    when 1
+      process.stdin.setEncoding 'utf8'
+      process.stdin.resume()
+      process.stdin
+    when 2
+      fs.createReadStream prog.args[1]
+    else
+      prog.help()
+
+Lazy(input).lines.map(String).map (line) ->
+  count++  if x = grep(line) isnt undefined
+
+process.on 'exit', ->
+  if prog.count
+    log count
+  else
+    log toCSV hits
+  process.exit !count
+
+toCSV = (rows, fs = ',', rs = '\n') ->
+  rows = objTo2DArray rows  unless rows instanceof Array
+  quote = (field) ->
+    if field.indexOf(fs) is -1 and field.indexOf(rs) is -1
+      field
+    else
+      "\"#{field.replace /\x22/g, '""'}\""
+  rows.map((cells) -> cells.map(quote).join(fs)).join rs
+
+objTo2DArray = (obj) ->
+  transpose = (array) ->
+    Object.keys(array[0]).map (lineNo) ->  # for each line number
+      array.map (column) -> column[lineNo] # pick one cell from each column
+
+  headers = []
+  columns = []
+  longest = 0
+  for name, column of obj
+    headers.push name
+    columns.push column
+    longest = Math.max longest, column.length
+
+  # post-fill empty strings to fill up the matrix
+  empty = ('' for i in [1..longest] by 1)
+  padded = (col.concat empty.slice col.length  for col in columns)
+
+  [headers].concat transpose padded
