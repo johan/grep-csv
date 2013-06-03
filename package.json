@@ -1,5 +1,5 @@
 { "name": "grep-csv"
-, "version": "0.0.1"
+, "version": "0.0.2"
 , "dependencies":
   { "commander": "~1.1.1"
   , "lazy": "~1.0.11"
